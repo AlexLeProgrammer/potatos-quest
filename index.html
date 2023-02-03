@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <!-- bloque le zoom automatique -->
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+        <!-- titre -->
+        <title>Potato's quest</title>
+    </head>
+    <body>
+        <!-- style -->
+        <style>
+            html, body {
+                height: 100%;
+                margin: 0;
+            }
+            
+            body {
+                background: black;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background-image: url('./sprites/map/terrain_0/tile000.png');
+            }
+        </style>
+        
+        <!-- zone d'affichage du jeu -->
+        <canvas width="512" height="512" id="game"></canvas>
+
+        <!-- script du jeu -->
+        <script type="text/javascript" src="script.js"></script>
+    </body>
+</html>
