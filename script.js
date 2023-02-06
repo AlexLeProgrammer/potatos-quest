@@ -20,11 +20,11 @@ const TERRAIN_UNIT_HEIGHT = 1120;
 const MAP_WIDTH = 933;
 const MAP_HEIGHT = 700;
 const HIT_ZONE = CARROT_HEIGHT - CARROT_HEIGHT / 4;
+const PLAYER_MAX_LIFE = 10;
 const CARROT_MAX_LIFE = 10;
 const HEALTH_BAR_WIDTH = 300;
 const HEALTH_BAR_HEIGHT = 50;
-const HEALTH_BAR_START_X = canvas.width - HEALTH_BAR_WIDTH - HEALTH_BAR_WIDTH / 2;
-const HEALTH_BAR_START_Y = canvas.height - HEALTH_BAR_HEIGHT * 2;
+const LOAD_DISTANCE = 1500;
 
 // variables globales
 // texture
@@ -60,7 +60,6 @@ var player_attack = new Image();
 player_attack.src = 'sprites/player/attack.png';
 
 // enemi
-// textures
 // carrotte
 var carrot_sprite = new Image();
 carrot_sprite.src = 'sprites/enemy/carrot/carrot_sprite.png';
@@ -559,6 +558,9 @@ var isAttacking = false;
 var attackTime = 0;
 var attackCountdown = 0;
 
+// autre
+var playerHealth = PLAYER_MAX_LIFE;
+
 // enemi
 var enemyX = [];
 var enemyY = [];
@@ -632,7 +634,6 @@ function enemyMovement(index, rangeX, rangeY) {
         isMoving[index] = true;
     }
     enemyFramesCounter[index]++;
-    console.log(enemyFramesCounter[index]);
 }
 
 // comportement des carrottes
@@ -647,6 +648,7 @@ function newCarrot(index, x, y) {
         isMoving.push(false);
         enemyFramesCounter.push(Math.floor(Math.random() * 20));
     }
+    
     // si l'enemi n'as plus de vie
     if (enemiLife[index] === 0) {
         ctx.drawImage(sword, enemyX[index] + CARROT_WIDHT / 2 - SWORD_WIDTH / 2 - cameraX, enemyY[index] - 25 - cameraY, SWORD_WIDTH, SWORD_HEIGHT);
@@ -655,6 +657,12 @@ function newCarrot(index, x, y) {
         // deplace l'enemi
         enemyMovement(index, 500, 500);
     }
+    
+    // si l'enemi est trop loin ne l'affiche plus
+    if (Math.sqrt(Math.pow(enemyX[index] - playerX, 2) + Math.pow(enemyY[index] - playerY, 2)) > LOAD_DISTANCE) {
+        return;
+    }
+
     // dessine l'enemi
     if (isMoving[index] && enemyFramesCounter[index] % 21 === 0) {
         ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
@@ -766,9 +774,21 @@ function loop() {
         drawPlayer(playerX, playerY);
 
         // dessine la bar de vie
+        var health_bar_start_x = canvas.width - HEALTH_BAR_WIDTH - HEALTH_BAR_WIDTH / 4;
+        var health_bar_start_y = canvas.height - HEALTH_BAR_HEIGHT * 1.5;
+        // remplissage, palette : https://coolors.co/palette/ff595e-ffca3a-8ac926-1982c4-6a4c93
+        if (playerHealth > PLAYER_MAX_LIFE / 3 + PLAYER_MAX_LIFE / 6) {
+            ctx.fillStyle = "#8AC926";
+        } else if (playerHealth > PLAYER_MAX_LIFE / 6)  {
+            ctx.fillStyle = "#FFCA3A";
+        } else {
+            ctx.fillStyle = "#FF595E";
+        }
+        ctx.fillRect(health_bar_start_x, health_bar_start_y, HEALTH_BAR_WIDTH / 10 * playerHealth, HEALTH_BAR_HEIGHT);
+        // contour
         ctx.lineWidth = 10;
         ctx.strokeStyle = "black";
-        ctx.strokeRect(HEALTH_BAR_START_X, HEALTH_BAR_START_Y, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT);
+        ctx.strokeRect(health_bar_start_x, health_bar_start_y, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT);
 
         // reduit le countdown d'attaque si il n'est pas egale a 0
         if (attackCountdown != 0) {
@@ -781,7 +801,6 @@ function loop() {
         } else {
             isAttacking = false;
         }
-
         // comptage des images
         frameCounter++;
     }
