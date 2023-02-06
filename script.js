@@ -633,6 +633,11 @@ function enemyMovement(index, rangeX, rangeY) {
         enemyY[index] += ENEMY_SPEED;
         isMoving[index] = true;
     }
+
+    while (Math.sqrt(Math.pow(targetX[index], 2) + Math.pow(targetY[index], 2)) > TERRAIN_UNIT_WIDTH * 10) {
+        targetX[index] += Math.floor(Math.random() * rangeX) - rangeX * 0.5;
+        targetY[index] += Math.floor(Math.random() * rangeY) - rangeY * 0.5;
+    }
     enemyFramesCounter[index]++;
 }
 
@@ -766,8 +771,8 @@ function loop() {
         }
 
         // gere les carrottes
-        for (var carrotIndex = 0; carrotIndex < 1000; carrotIndex++) {
-            newCarrot(carrotIndex, 0, 0);
+        for (var carrotIndex = 0; carrotIndex < 100; carrotIndex++) {
+            newCarrot(carrotIndex, Math.floor(Math.random() * 10000) - 5000, Math.floor(Math.random() * 10000) - 5000);
         }
 
         // dessine le joueur
@@ -865,7 +870,7 @@ document.addEventListener('mouseup', function(e) {
         isAttacking = true;
         attackTime = 20;
         attackCountdown = 50;
-        hit(0);
+        hit();
     }
 });
 
