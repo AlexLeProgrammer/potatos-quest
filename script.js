@@ -571,15 +571,6 @@ var playerHealth = PLAYER_MAX_LIFE;
 // multijoueur
 var multiplayer = true;
 
-// enemi
-var enemyX = [];
-var enemyY = [];
-var enemiLife = [];
-var targetX = [];
-var targetY = [];
-var enemyFramesCounter = [];
-var enemyWaitTime = [];
-
 // inventaire / map
 var isMapOpened = false;
 
@@ -657,7 +648,7 @@ function newCarrot(index, x, y) {
         enemyY.push(y);
         targetX.push(x);
         targetY.push(y);
-        enemiLife.push(CARROT_MAX_LIFE);
+        enemyLife.push(CARROT_MAX_LIFE);
         enemyFramesCounter.push(Math.floor(Math.random() * 20));
         enemyWaitTime.push(0);
     }
@@ -673,7 +664,7 @@ function newCarrot(index, x, y) {
         isInRange = true;
     }
     // si l'enemi n'as plus de vie
-    if (enemiLife[index] === 0) {
+    if (enemyLife[index] === 0) {
         ctx.drawImage(sword, enemyX[index] + CARROT_WIDTH / 2 - SWORD_WIDTH / 2 - cameraX, enemyY[index] - 25 - cameraY, SWORD_WIDTH, SWORD_HEIGHT);
     } else if (enemyWaitTime[index] != 0) {
         // fait attendre l'enemi si il reste du temps d'attente
@@ -805,13 +796,18 @@ function loop() {
 
         // multijoueur
         if (multiplayer) {
+            getFirstPlayer();
+            if (firstPlayerDB == DB_ID) {
+                sendEnemisDatas();
+            } else {
+                getEnemisDatas();
+            }
             sendPlayerPosition(playerX, playerY);
             getDatas();
             if (playersId.length > 1) {
                 for (var i = 0; i < playersId.length; i++) {
                     if (playersId[i] != DB_ID) {
-                        console.log(playersId[i]);
-                        console.log(playersDatas[i]);
+                        // dessine les joueur
                         drawPlayer(playersDatas[i].x, playersDatas[i].y);
                     }
                 }
@@ -918,6 +914,11 @@ canvas.addEventListener("mousemove", (e) => {
     mouseScreenPosX = e.clientX;
     mouseScreenPosY = e.clientY;
 });
+
+// lorsqu'on quitte le jeu supprime les joueurs
+window.addEventListener("beforeunload", function() {
+    removePlayers();
+ }, false);
 
 // demarre le jeu
 requestAnimationFrame(loop);
