@@ -565,8 +565,11 @@ var isAttacking = false;
 var attackTime = 0;
 var attackCountdown = 0;
 
-// autre
+// vie
 var playerHealth = PLAYER_MAX_LIFE;
+
+// multijoueur
+var multiplayer = true;
 
 // enemi
 var enemyX = [];
@@ -577,7 +580,7 @@ var targetY = [];
 var enemyFramesCounter = [];
 var enemyWaitTime = [];
 
-// autre
+// inventaire / map
 var isMapOpened = false;
 
 // fonction
@@ -800,6 +803,20 @@ function loop() {
         // dessine le joueur
         drawPlayer(playerX, playerY);
 
+        // multijoueur
+        if (multiplayer) {
+            sendPlayerPosition(playerX, playerY);
+            getDatas();
+            if (playersId.length > 1) {
+                for (var i = 0; i < playersId.length; i++) {
+                    if (playersId[i] != DB_ID) {
+                        console.log(playersId[i]);
+                        console.log(playersDatas[i]);
+                        drawPlayer(playersDatas[i].x, playersDatas[i].y);
+                    }
+                }
+            }
+        }
         // dessine la bar de vie
         var health_bar_start_x = canvas.width - HEALTH_BAR_WIDTH - HEALTH_BAR_WIDTH / 4;
         var health_bar_start_y = canvas.height - HEALTH_BAR_HEIGHT * 1.5;
