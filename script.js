@@ -10,8 +10,9 @@ const SWORD_WIDTH = PLAYER_SIZE / 32 * 8;
 const SWORD_HEIGHT = PLAYER_SIZE / 32 * 22;
 const CLUB_WIDTH = PLAYER_SIZE / 24 * 6;
 const CLUB_HEIGHT = PLAYER_SIZE / 24 * 15;
-const CARROT_WIDHT = PLAYER_SIZE / 24 * 19;
+const CARROT_WIDTH = PLAYER_SIZE / 24 * 19;
 const CARROT_HEIGHT = PLAYER_SIZE / 24 * 25;
+const CARROT_ATTACK_WIDTH = PLAYER_SIZE;
 const CARROT_JUMP_HEIGHT = 50;
 const PLAYER_SPEED = 4;
 const ENEMY_SPEED = 2;
@@ -20,6 +21,7 @@ const TERRAIN_UNIT_HEIGHT = 1120;
 const MAP_WIDTH = 933;
 const MAP_HEIGHT = 700;
 const HIT_ZONE = CARROT_HEIGHT - CARROT_HEIGHT / 4;
+const CARROT_ATTACK_RANGE = 200;
 const PLAYER_MAX_LIFE = 10;
 const CARROT_MAX_LIFE = 10;
 const HEALTH_BAR_WIDTH = 300;
@@ -61,8 +63,13 @@ player_attack.src = 'sprites/player/attack.png';
 
 // enemi
 // carrotte
+// idle / jump
 var carrot_sprite = new Image();
 carrot_sprite.src = 'sprites/enemy/carrot/carrot_sprite.png';
+
+// attack
+var carrot_attack = new Image();
+carrot_attack.src = 'sprites/enemy/carrot/carrot_attack.png';
 
 // arme
 // sword
@@ -567,8 +574,8 @@ var enemyY = [];
 var enemiLife = [];
 var targetX = [];
 var targetY = [];
-var isMoving = [];
 var enemyFramesCounter = [];
+var enemyWaitTime = [];
 
 // autre
 var isMapOpened = false;
@@ -602,12 +609,14 @@ function drawPlayer(x, y) {
         ctx.drawImage(player_attack, x - cameraX, y - cameraY, PLAYER_ATTACK_WIDTH, PLAYER_SIZE);
     }
 }
+
 // detecte si on tape un enemi
 function hit() {
     // verifie que la distance entre l'enemi et la souris est la bonne
     for (var carrotIndex = 0; carrotIndex < enemyX.length; carrotIndex++) {
-        if (Math.sqrt(Math.pow(enemyX[carrotIndex] + CARROT_WIDHT / 2 - mousePosX, 2) + Math.pow(enemyY[carrotIndex] + CARROT_HEIGHT / 2 - mousePosY, 2)) <= HIT_ZONE) {
-            enemiLife[carrotIndex] = 0;
+        if (Math.sqrt(Math.pow(enemyX[carrotIndex] + CARROT_WIDTH / 2 - mousePosX, 2) + Math.pow(enemyY[carrotIndex] + CARROT_HEIGHT / 2 - mousePosY, 2)) <= HIT_ZONE &&
+        enemiLife[carrotIndex] != 0) {
+            enemiLife[carrotIndex] -= 5;
         }
     }
 }
@@ -615,23 +624,19 @@ function hit() {
 // deplacement des enemis
 function enemyMovement(index, rangeX, rangeY) {
     // si l'enemi a atteint sa cible, en genere un nouvelle
-    if (Math.abs(enemyX[index] - targetX[index]) <= CARROT_WIDHT && Math.abs(enemyY[index] - targetY[index]) <= CARROT_HEIGHT) {
+    if (Math.abs(enemyX[index] - targetX[index]) <= CARROT_WIDTH && Math.abs(enemyY[index] - targetY[index]) <= CARROT_HEIGHT) {
         targetX[index] += Math.floor(Math.random() * rangeX) - rangeX * 0.5;
         targetY[index] += Math.floor(Math.random() * rangeY) - rangeY * 0.5;
     }
     if (enemyX[index] > targetX[index]) {
         enemyX[index] -= ENEMY_SPEED;
-        isMoving[index] = true;
     } else if (enemyX[index] < targetX[index]) {
         enemyX[index] += ENEMY_SPEED;
-        isMoving[index] = true;
     }
     if (enemyY[index] > targetY[index]) {
         enemyY[index] -= ENEMY_SPEED;
-        isMoving[index] = true;
     } else if (enemyY[index] < targetY[index]) {
         enemyY[index] += ENEMY_SPEED;
-        isMoving[index] = true;
     }
 
     while (Math.sqrt(Math.pow(targetX[index], 2) + Math.pow(targetY[index], 2)) > TERRAIN_UNIT_WIDTH * 10) {
@@ -650,14 +655,27 @@ function newCarrot(index, x, y) {
         targetX.push(x);
         targetY.push(y);
         enemiLife.push(CARROT_MAX_LIFE);
-        isMoving.push(false);
         enemyFramesCounter.push(Math.floor(Math.random() * 20));
+        enemyWaitTime.push(0);
     }
     
+    // mets a jour le temps d'attente de l'enemi
+    if (enemyFramesCounter[index] % 100 === 0) {
+        enemyWaitTime[index] = Math.floor(Math.random() * 100);
+    }
+
+    // calcule si le joueur est a porte d'attaque
+    var isInRange = false;
+    if (Math.sqrt(Math.pow(enemyX[index] - playerX, 2) + Math.pow(enemyY[index] - playerY, 2)) < CARROT_ATTACK_RANGE) {
+        isInRange = true;
+    }
     // si l'enemi n'as plus de vie
     if (enemiLife[index] === 0) {
-        ctx.drawImage(sword, enemyX[index] + CARROT_WIDHT / 2 - SWORD_WIDTH / 2 - cameraX, enemyY[index] - 25 - cameraY, SWORD_WIDTH, SWORD_HEIGHT);
-        isMoving[index] = false;
+        ctx.drawImage(sword, enemyX[index] + CARROT_WIDTH / 2 - SWORD_WIDTH / 2 - cameraX, enemyY[index] - 25 - cameraY, SWORD_WIDTH, SWORD_HEIGHT);
+    } else if (enemyWaitTime[index] != 0) {
+        // fait attendre l'enemi si il reste du temps d'attente
+        enemyWaitTime[index]--;
+    } else if (isInRange) {
     } else {
         // deplace l'enemi
         enemyMovement(index, 500, 500);
@@ -669,50 +687,54 @@ function newCarrot(index, x, y) {
     }
 
     // dessine l'enemi
-    if (isMoving[index] && enemyFramesCounter[index] % 21 === 0) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 1) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 2 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 2) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 3 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 3) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 4 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 4) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 5 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 5) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 6 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 6) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 7 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 7) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 8 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 8) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 9 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 9) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 10 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 10) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 11 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 11) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 10 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 12) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 9 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 13) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 8 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 14) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 7 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 15) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 6 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 16) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 5 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 17) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 4 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 18) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 3 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 19) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 2 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 20) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
+    // attaque
+    if (isInRange) {
+        ctx.drawImage(carrot_attack, enemyX[index] - cameraX, enemyY[index] - cameraY, CARROT_ATTACK_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 0) {
+        // animation de deplacement
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 1) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 2 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 2) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 3 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 3) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 4 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 4) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 5 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 5) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 6 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 6) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 7 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 7) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 8 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 8) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 9 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 9) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 10 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 10) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 11 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 11) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 10 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 12) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 9 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 13) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 8 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 14) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 7 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 15) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 6 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 16) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 5 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 17) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 4 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 18) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 3 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 19) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 2 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 20) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
     } else {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
     }
 }
 
