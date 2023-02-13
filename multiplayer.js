@@ -23,13 +23,19 @@ var targetX = [];
 var targetY = [];
 var enemyFramesCounter = [];
 var enemyWaitTime = [];
+var enemyAttackTime = [];
+var enemyAttackCountdown = [];
 
 // ajoute la position du joueur dans la base de donnee
-function sendPlayerPosition(x, y) {
+function sendPlayerDatas(x, y, isAttacking, isSwordInHand, isSwordReversed, isMoving) {
     var listRef = database.ref('players/' + DB_ID);
     listRef.set({
         x: x,
         y: y,
+        isAttacking: isAttacking,
+        isSwordInHand: isSwordInHand,
+        isSwordReversed: isSwordReversed,
+        isMoving: isMoving
     });
 }
 
@@ -43,12 +49,14 @@ function sendEnemisDatas() {
         targetX: targetX,
         targetY: targetY,
         enemyFramesCounter: enemyFramesCounter,
-        enemyWaitTime: enemyWaitTime
+        enemyWaitTime: enemyWaitTime,
+        enemyAttackTime: enemyAttackTime,
+        enemyAttackCountdown: enemyAttackCountdown
     });
 }
 
 // recupere les joueurs
-function getDatas() {
+function getPlayerDatas() {
     var listRef = database.ref('players');
     listRef.get().then((snapshot) => {
     if (snapshot.exists()) {
@@ -69,6 +77,8 @@ function getEnemisDatas() {
         targetY = snapshot.val().targetY;
         enemyFramesCounter = snapshot.val().enemyFramesCounter;
         enemyWaitTime = snapshot.val().enemyWaitTime;
+        enemyAttackTime = snapshot.val().enemyAttackTime;
+        enemyAttackCountdown = snapshot.val().enemyAttackCountdown;
     }});
 }
 
@@ -83,7 +93,6 @@ function getFirstPlayer() {
         listRef.set({
             id: DB_ID
         });
-        firstPlayerDB = DB_ID;
     }});
 }
 
@@ -92,3 +101,9 @@ function removePlayers() {
     var listRef = database.ref('players');
     listRef.remove();
 }
+
+// supprime les joueurs
+removePlayers();
+
+// recupere les donnees enemis
+getEnemisDatas();
