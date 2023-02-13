@@ -10,8 +10,9 @@ const SWORD_WIDTH = PLAYER_SIZE / 32 * 8;
 const SWORD_HEIGHT = PLAYER_SIZE / 32 * 22;
 const CLUB_WIDTH = PLAYER_SIZE / 24 * 6;
 const CLUB_HEIGHT = PLAYER_SIZE / 24 * 15;
-const CARROT_WIDHT = PLAYER_SIZE / 24 * 19;
+const CARROT_WIDTH = PLAYER_SIZE / 24 * 19;
 const CARROT_HEIGHT = PLAYER_SIZE / 24 * 25;
+const CARROT_ATTACK_WIDTH = PLAYER_SIZE;
 const CARROT_JUMP_HEIGHT = 50;
 const PLAYER_SPEED = 4;
 const ENEMY_SPEED = 2;
@@ -20,11 +21,17 @@ const TERRAIN_UNIT_HEIGHT = 1120;
 const MAP_WIDTH = 933;
 const MAP_HEIGHT = 700;
 const HIT_ZONE = CARROT_HEIGHT - CARROT_HEIGHT / 4;
+const CARROT_ATTACK_RANGE = 100;
 const PLAYER_MAX_LIFE = 10;
 const CARROT_MAX_LIFE = 10;
 const HEALTH_BAR_WIDTH = 300;
 const HEALTH_BAR_HEIGHT = 50;
+const HEALTH_BAR_LINE_SIZE = 10;
 const LOAD_DISTANCE = 1500;
+const PLAYER_ATTACK_COUNTDOWN = 50;
+const PLAYER_ATTACK_TIME = 20;
+const CARROT_ATTACK_COUNTDOWN = 50;
+const CARROT_ATTACK_TIME = 20;
 
 // variables globales
 // texture
@@ -61,8 +68,13 @@ player_attack.src = 'sprites/player/attack.png';
 
 // enemi
 // carrotte
+// idle / jump
 var carrot_sprite = new Image();
 carrot_sprite.src = 'sprites/enemy/carrot/carrot_sprite.png';
+
+// attack
+var carrot_attack = new Image();
+carrot_attack.src = 'sprites/enemy/carrot/carrot_attack.png';
 
 // arme
 // sword
@@ -535,6 +547,10 @@ var playerY = 0;
 var cameraX = 0;
 var cameraY = 0;
 
+// bar de vie
+var health_bar_start_x = 0;
+var health_bar_start_y = 0;
+
 // souris
 var mouseScreenPosX = 0;
 var mouseScreenPosY = 0;
@@ -555,44 +571,39 @@ var isDownPressed = false;
 var isSwordInHand = false;
 var isSwordReversed = false;
 var isAttacking = false;
+var isMoving = false;
 var attackTime = 0;
 var attackCountdown = 0;
 
-// autre
+// vie
 var playerHealth = PLAYER_MAX_LIFE;
 
-// enemi
-var enemyX = [];
-var enemyY = [];
-var enemiLife = [];
-var targetX = [];
-var targetY = [];
-var isMoving = [];
-var enemyFramesCounter = [];
+// multijoueur
+var multiplayer = true;
 
-// autre
+// inventaire / map
 var isMapOpened = false;
 
 // fonction
 // dessine le joueur
-function drawPlayer(x, y) {
-    if (!isAttacking) {
-        if (isSwordInHand) {
-            if (isUpPressed || isDownPressed || isLeftPressed ||isRightPressed) {
-                if (isSwordReversed) {
+function drawPlayer(x, y, attacking, sword, swordReversed, moving) {
+    if (!attacking) {
+        if (sword) {
+            if (moving) {
+                if (swordReversed) {
                     ctx.drawImage(player_run_Rsword[parseInt(frameCounter / 10) % 2], x - cameraX, y - cameraY, PLAYER_SWORD_WIDTH, PLAYER_SIZE);
                 } else {
                     ctx.drawImage(player_run_sword[parseInt(frameCounter / 10) % 2], x - cameraX, y - cameraY, PLAYER_SWORD_WIDTH, PLAYER_SIZE);
                 }
             } else {
-                if (isSwordReversed) {
+                if (swordReversed) {
                     ctx.drawImage(player_Rsword_idle, x - cameraX, y - cameraY, PLAYER_SWORD_WIDTH, PLAYER_SIZE);
                 } else {
                     ctx.drawImage(player_sword_idle, x - cameraX, y - cameraY, PLAYER_SWORD_WIDTH, PLAYER_SIZE);
                 }
             }
         } else {
-            if (isUpPressed || isDownPressed || isLeftPressed ||isRightPressed) {
+            if (moving) {
                 ctx.drawImage(player_run[parseInt(frameCounter / 10) % 2], x - cameraX, y - cameraY, PLAYER_SIZE, PLAYER_SIZE);
             } else {
                 ctx.drawImage(player_idle, x - cameraX, y - cameraY, PLAYER_SIZE, PLAYER_SIZE);
@@ -602,12 +613,14 @@ function drawPlayer(x, y) {
         ctx.drawImage(player_attack, x - cameraX, y - cameraY, PLAYER_ATTACK_WIDTH, PLAYER_SIZE);
     }
 }
+
 // detecte si on tape un enemi
 function hit() {
     // verifie que la distance entre l'enemi et la souris est la bonne
-    for (var carrotIndex = 0; carrotIndex < enemyX.length; carrotIndex++) {
-        if (Math.sqrt(Math.pow(enemyX[carrotIndex] + CARROT_WIDHT / 2 - mousePosX, 2) + Math.pow(enemyY[carrotIndex] + CARROT_HEIGHT / 2 - mousePosY, 2)) <= HIT_ZONE) {
-            enemiLife[carrotIndex] = 0;
+    for (var carrotIndex = 0; carrotIndex < enemyLife.length; carrotIndex++) {
+        if (Math.sqrt(Math.pow(enemyX[carrotIndex] + CARROT_WIDTH / 2 - mousePosX, 2) + Math.pow(enemyY[carrotIndex] + CARROT_HEIGHT / 2 - mousePosY, 2)) <= HIT_ZONE &&
+        enemyLife[carrotIndex] != 0) {
+            enemyLife[carrotIndex] -= 5;
         }
     }
 }
@@ -615,23 +628,19 @@ function hit() {
 // deplacement des enemis
 function enemyMovement(index, rangeX, rangeY) {
     // si l'enemi a atteint sa cible, en genere un nouvelle
-    if (Math.abs(enemyX[index] - targetX[index]) <= CARROT_WIDHT && Math.abs(enemyY[index] - targetY[index]) <= CARROT_HEIGHT) {
+    if (Math.abs(enemyX[index] - targetX[index]) <= CARROT_WIDTH && Math.abs(enemyY[index] - targetY[index]) <= CARROT_HEIGHT) {
         targetX[index] += Math.floor(Math.random() * rangeX) - rangeX * 0.5;
         targetY[index] += Math.floor(Math.random() * rangeY) - rangeY * 0.5;
     }
     if (enemyX[index] > targetX[index]) {
         enemyX[index] -= ENEMY_SPEED;
-        isMoving[index] = true;
     } else if (enemyX[index] < targetX[index]) {
         enemyX[index] += ENEMY_SPEED;
-        isMoving[index] = true;
     }
     if (enemyY[index] > targetY[index]) {
         enemyY[index] -= ENEMY_SPEED;
-        isMoving[index] = true;
     } else if (enemyY[index] < targetY[index]) {
         enemyY[index] += ENEMY_SPEED;
-        isMoving[index] = true;
     }
 
     while (Math.sqrt(Math.pow(targetX[index], 2) + Math.pow(targetY[index], 2)) > TERRAIN_UNIT_WIDTH * 10) {
@@ -649,71 +658,139 @@ function newCarrot(index, x, y) {
         enemyY.push(y);
         targetX.push(x);
         targetY.push(y);
-        enemiLife.push(CARROT_MAX_LIFE);
-        isMoving.push(false);
+        enemyLife.push(CARROT_MAX_LIFE);
         enemyFramesCounter.push(Math.floor(Math.random() * 20));
+        enemyWaitTime.push(0);
+        enemyAttackTime.push(0);
+        enemyAttackCountdown.push(0);
     }
     
+    // mets a jour le temps d'attente de l'enemi
+    if (enemyFramesCounter[index] % 100 === 0) {
+        enemyWaitTime[index] = Math.floor(Math.random() * 100);
+    }
+
+    // calcule si le joueur est a porte d'attaque
+    var isInRange = false;
+    var indexInRange = 0;
+    
+    if (multiplayer) {
+        for (var playerIndex = 0; playerIndex < playersId.length; playerIndex++) {
+            if (Math.sqrt(Math.pow(enemyX[index] - playerX, 2) + Math.pow(enemyY[index] - playerY, 2)) < CARROT_ATTACK_RANGE) {
+                isInRange = true;
+                indexInRange = playerIndex;
+            }
+        }
+    } else {
+        if (Math.sqrt(Math.pow(enemyX[index] - playerX, 2) + Math.pow(enemyY[index] - playerY, 2)) < CARROT_ATTACK_RANGE) {
+            isInRange = true;
+        }
+    }
+
     // si l'enemi n'as plus de vie
-    if (enemiLife[index] === 0) {
-        ctx.drawImage(sword, enemyX[index] + CARROT_WIDHT / 2 - SWORD_WIDTH / 2 - cameraX, enemyY[index] - 25 - cameraY, SWORD_WIDTH, SWORD_HEIGHT);
-        isMoving[index] = false;
+    if (enemyLife[index] === 0) {
+    } else if (isInRange && enemyAttackCountdown[index] === 0) {
+        // lorsque le delai d'attaque est a 0 le remets au maximum pour attaquer
+        enemyAttackTime[index] = CARROT_ATTACK_TIME; 
+        enemyAttackCountdown[index] = CARROT_ATTACK_COUNTDOWN;
+    } else if (isInRange) {
+        // si le joueur est a porte ne se deplace plus
+        // fait attendre l'enemi si il reste du temps d'attente
+        enemyWaitTime[index]--;
     } else {
         // deplace l'enemi
         enemyMovement(index, 500, 500);
     }
     
-    // si l'enemi est trop loin ne l'affiche plus
+    // reduit le temps d'attaque
+    if (enemyAttackTime[index] != 0) {
+        enemyAttackTime[index]--;
+    }
+
+    // reduit le delai entre deux attaque
+    if (enemyAttackCountdown[index] != 0) {
+        enemyAttackCountdown[index]--;
+    }
+}
+
+// affiche les carrottes
+function displayCarrots(index) {
+    // si l'enemi est trop loin ne l'affiche pas
     if (Math.sqrt(Math.pow(enemyX[index] - playerX, 2) + Math.pow(enemyY[index] - playerY, 2)) > LOAD_DISTANCE) {
         return;
     }
 
     // dessine l'enemi
-    if (isMoving[index] && enemyFramesCounter[index] % 21 === 0) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 1) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 2 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 2) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 3 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 3) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 4 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 4) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 5 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 5) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 6 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 6) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 7 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 7) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 8 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 8) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 9 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 9) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 10 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 10) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 11 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 11) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 10 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 12) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 9 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 13) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 8 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 14) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 7 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 15) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 6 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 16) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 5 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 17) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 4 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 18) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 3 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 19) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 2 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
-    } else if (isMoving[index] && enemyFramesCounter[index] % 21 === 20) {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
+    // attaque
+    // si l'enemi n'as plus de vie
+    if (enemyLife[index] === 0) {
+        ctx.drawImage(sword, enemyX[index] + CARROT_WIDTH / 2 - SWORD_WIDTH / 2 - cameraX, enemyY[index] - 25 - cameraY, SWORD_WIDTH, SWORD_HEIGHT);
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyAttackTime[index] != 0) {
+        ctx.drawImage(carrot_attack, enemyX[index] - cameraX, enemyY[index] - cameraY, CARROT_ATTACK_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 0) {
+        // animation de deplacement
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 1) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 2 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 2) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 3 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 3) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 4 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 4) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 5 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 5) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 6 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 6) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 7 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 7) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 8 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 8) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 9 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 9) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 10 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 10) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 11 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 11) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 10 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 12) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 9 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 13) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 8 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 14) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 7 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 15) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 6 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 16) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 5 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 17) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 4 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 18) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 3 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 19) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 * 2 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
+    } else if (enemyFramesCounter[index] % 21 === 20) {
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - CARROT_JUMP_HEIGHT / 21 - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
     } else {
-        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - cameraY, CARROT_WIDHT, CARROT_HEIGHT);
+        ctx.drawImage(carrot_sprite, enemyX[index] - cameraX, enemyY[index] - cameraY, CARROT_WIDTH, CARROT_HEIGHT);
     }
+}
+
+// dessine les bars de vie
+function drawHealthBar(lifeVar, maxLife, startX, startY, sizeX, sizeY, lineSize) {
+    // remplissage, palette : https://coolors.co/palette/ff595e-ffca3a-8ac926-1982c4-6a4c93
+    if (lifeVar > maxLife / 3 + maxLife / 6) {
+        ctx.fillStyle = "#8AC926";
+    } else if (lifeVar > maxLife / 6)  {
+        ctx.fillStyle = "#FFCA3A";
+    } else {
+        ctx.fillStyle = "#FF595E";
+    }
+    ctx.fillRect(startX, startY, sizeX / 10 * lifeVar, sizeY);
+    // contour
+    ctx.lineWidth = lineSize;
+    ctx.strokeStyle = "black";
+    ctx.strokeRect(startX, startY, sizeX, sizeY);
 }
 
 // jeu
@@ -725,6 +802,10 @@ function loop() {
     // calcule la position de la souris dans le jeu
     mousePosX = mouseScreenPosX + cameraX;
     mousePosY = mouseScreenPosY + cameraY;
+
+
+    health_bar_start_x = canvas.width - HEALTH_BAR_WIDTH - HEALTH_BAR_WIDTH / 4;
+    health_bar_start_y = canvas.height - HEALTH_BAR_HEIGHT * 1.5;
 
     // clear le canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -758,6 +839,13 @@ function loop() {
             playerY += PLAYER_SPEED;
         }
         
+        // detecte si on se deplace
+        if (isUpPressed || isDownPressed || isLeftPressed ||isRightPressed) {
+            isMoving = true;
+        } else {
+            isMoving = false;
+        }
+
         // dessine le terrain
         for (var i = 0; i < 100; i++) {
             // haut gauche
@@ -770,30 +858,45 @@ function loop() {
             ctx.drawImage(terrain_3[i], i % 10 * TERRAIN_UNIT_WIDTH - cameraX, parseInt(i / 10) * TERRAIN_UNIT_HEIGHT - cameraY, TERRAIN_UNIT_WIDTH, TERRAIN_UNIT_HEIGHT);
         }
 
+        // multijoueur
+        if (multiplayer) {
+            getFirstPlayer();
+            if (firstPlayerDB == DB_ID) {
+                sendEnemisDatas();
+            } else {
+                getEnemisDatas();
+            }
+
+            sendPlayerDatas(playerX, playerY, isAttacking, isSwordInHand, isSwordReversed, isMoving);
+            getPlayerDatas();
+            if (playersId.length > 1) {
+                for (var i = 0; i < playersId.length; i++) {
+                    if (playersId[i] != DB_ID) {
+                        // dessine les joueur
+                        drawPlayer(playersDatas[i].x, playersDatas[i].y, playersDatas[i].isAttacking, playersDatas[i].isSwordInHand,
+                            playersDatas[i].isSwordReversed, playersDatas[i].isMoving);
+                    }
+                }
+            }
+        }
+
         // gere les carrottes
-        for (var carrotIndex = 0; carrotIndex < 100; carrotIndex++) {
-            newCarrot(carrotIndex, Math.floor(Math.random() * 10000) - 5000, Math.floor(Math.random() * 10000) - 5000);
-        }
-
-        // dessine le joueur
-        drawPlayer(playerX, playerY);
-
-        // dessine la bar de vie
-        var health_bar_start_x = canvas.width - HEALTH_BAR_WIDTH - HEALTH_BAR_WIDTH / 4;
-        var health_bar_start_y = canvas.height - HEALTH_BAR_HEIGHT * 1.5;
-        // remplissage, palette : https://coolors.co/palette/ff595e-ffca3a-8ac926-1982c4-6a4c93
-        if (playerHealth > PLAYER_MAX_LIFE / 3 + PLAYER_MAX_LIFE / 6) {
-            ctx.fillStyle = "#8AC926";
-        } else if (playerHealth > PLAYER_MAX_LIFE / 6)  {
-            ctx.fillStyle = "#FFCA3A";
+        if (firstPlayerDB == DB_ID || !multiplayer) {
+            for (var carrotIndex = 0; carrotIndex < 1000; carrotIndex++) {
+                newCarrot(carrotIndex, Math.floor(Math.random() * 10000) - 5000, Math.floor(Math.random() * 10000) - 5000);
+                displayCarrots(carrotIndex);
+            }
         } else {
-            ctx.fillStyle = "#FF595E";
+            for (var carrotIndex = 0; carrotIndex < 1000; carrotIndex++) {
+                displayCarrots(carrotIndex);
+            }
         }
-        ctx.fillRect(health_bar_start_x, health_bar_start_y, HEALTH_BAR_WIDTH / 10 * playerHealth, HEALTH_BAR_HEIGHT);
-        // contour
-        ctx.lineWidth = 10;
-        ctx.strokeStyle = "black";
-        ctx.strokeRect(health_bar_start_x, health_bar_start_y, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT);
+        
+        // dessine le joueur
+        drawPlayer(playerX, playerY, isAttacking, isSwordInHand, isSwordReversed, isMoving);
+
+        // dessine la bar de vie du joueur
+        drawHealthBar(playerHealth, PLAYER_MAX_LIFE, health_bar_start_x, health_bar_start_y, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT, HEALTH_BAR_LINE_SIZE);
 
         // reduit le countdown d'attaque si il n'est pas egale a 0
         if (attackCountdown != 0) {
@@ -868,8 +971,8 @@ document.addEventListener('keyup', function(e) {
 document.addEventListener('mouseup', function(e) {
     if (e.which === 1 && attackCountdown === 0 && isSwordInHand && !isSwordReversed) {
         isAttacking = true;
-        attackTime = 20;
-        attackCountdown = 50;
+        attackTime = PLAYER_ATTACK_TIME;
+        attackCountdown = PLAYER_ATTACK_COUNTDOWN;
         hit();
     }
 });
@@ -879,6 +982,11 @@ canvas.addEventListener("mousemove", (e) => {
     mouseScreenPosX = e.clientX;
     mouseScreenPosY = e.clientY;
 });
+
+// lorsqu'on quitte le jeu supprime les joueurs
+window.addEventListener("beforeunload", function() {
+    removePlayers();
+ }, false);
 
 // demarre le jeu
 requestAnimationFrame(loop);
